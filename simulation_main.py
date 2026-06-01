@@ -10,7 +10,7 @@ import os
 # 1. 実験設定（Config）クラス
 # =====================================================================
 class GameConfig:
-    N_SIMULATIONS = 1  # ★本番時は 30〜50 に設定
+    N_SIMULATIONS = 30  # ★本番時は 30〜50 に設定
     CONDITIONS = ["A_Baseline", "B_Proposed"] # 条件A(通常), 条件B(二重過程)
     MAX_DAYS = 5
     TURNS_PER_DAY = 6
@@ -30,7 +30,7 @@ class GameConfig:
     SELLER_TARGET_P = 1800
     SELLER_LIMIT_P = 600
 
-    MODEL_NAME = "gemma2:27b" # 使用するOllamaモデル
+    MODEL_NAME = "gemma4:31b" # 使用するOllamaモデル
 
 # =====================================================================
 # 2. 堅牢なJSONパーサー（インラインコメント対応）
