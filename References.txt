@@ -1,0 +1,40 @@
+ 1. 基礎理論：二重過程理論（システム1・2）
+エージェントのプロンプト設計の根幹である「システム1・2」の出所として、ダニエル・カーネマンの著作（または論文）の引用が必須です。
+
+和文論文の場合：
+ダニエル・カーネマン（著）, 村井章子（訳） (2014). 『ファスト＆スロー：あなたの意思決定はどのように決まるか？』, 早川書房.
+
+英文論文（または国際学会）の場合：
+Kahneman, D. (2011). Thinking, Fast and Slow. Farrar, Straus and Giroux.
+
+
+ 2. 数理モデル：ナッシュ交渉解
+定量的評価で「ナッシュ交渉解からの乖離度」を測るため、ゲーム理論の生みの親であるジョン・ナッシュの記念碑的な論文を引用する必要があります。
+
+文献情報：
+Nash, J. (1950). The Bargaining Problem. Econometrica, 18(2), 155–162.
+
+
+ 3. 使用したソフトウェア・ライブラリ
+Pythonそのものや、ボラティリティの計算で使用する NumPy にも、実は「学術論文で引用する用の公式文献（論文）」が存在します。これらを書くことで「数値計算の信頼性」を担保します。
+
+Python自体：
+Python Software Foundation. Python Language Reference, version 3.x. Available at https://www.python.org/
+
+NumPy（※公式が指定している論文です）：
+Harris, C. R., et al. (2020). Array programming with NumPy. Nature, 585(7825), 357–362.
+
+
+ 4. 先行研究：LLMマルチエージェント・自動交渉
+「LLMにエージェントとしてロールプレイをさせ、社会科学的なシミュレーションを行う」という手法そのものの先駆者たちを引用します。これらを踏まえた上で「本研究はさらにシステム1・2を足した」と主張するためです。
+
+マルチエージェントシミュレーションの金字塔（生成エージェント）：
+Park, J. S., et al. (2023). Generative Agents: Interactive Simulacra of Human Behavior. In Proceedings of the 36th Annual ACM Symposium on User Interface Software and Technology (UIST '23).
+
+LLMによる自動交渉の先行研究（例）：
+Fu, Y., et al. (2023). Improving Language Model Negotiation with Self-Play and Language Feedback. arXiv preprint arXiv:2305.10142.
+
+###
+実装したコード自体は、正規表現によるパースや一般的なボラティリティの数式（変化率の絶対値）をスクラッチで実装したオリジナルのプログラムなので、コード自体の著作権侵害の恐れはありません。
+ただし、本研究の根幹であるカーネマンの二重過程理論（2011）やナッシュの交渉問題（1950）、および数値計算に使用したNumPy（2020）などのソフトウェアについては、先行研究および参考文献として論文内に正しく明記・引用します。
+###
