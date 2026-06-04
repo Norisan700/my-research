@@ -25,7 +25,7 @@ plt.title("Average Survival Days", fontsize=16, fontweight='bold', pad=15)
 plt.xlabel("Agent Architecture", fontsize=14)
 plt.ylabel("Days Survived (Max 5)", fontsize=14)
 plt.xticks([0, 1], labels)
-plt.ylim(0, 5)
+plt.ylim(0, 6)
 plt.tight_layout()
 plt.savefig("graph_survival_days.png", dpi=300) # 高解像度で保存
 plt.show()
