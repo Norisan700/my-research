@@ -1,3 +1,18 @@
-test
-moi 1
-success to add
+
+================ 解析結果 ================
+[マクロ指標：生存日数（最大5日）]
+condition
+A_Baseline    4.000000
+B_Proposed    4.633333
+[マクロ指標：最終合意率（1.0=100%）]
+condition
+A_Baseline    0.665556
+B_Proposed    0.765000
+[ミクロ指標：平均合意ターン数]
+condition
+A_Baseline    5.262500
+B_Proposed    5.327103
+[内部指標：葛藤度スコア（CS_tの平均）]
+condition
+A_Baseline    0.357098
+B_Proposed    0.283601
