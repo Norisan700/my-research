@@ -10,8 +10,8 @@ import os
 # 1. 実験設定（Config）クラス
 # =====================================================================
 class GameConfig:
-    N_SIMULATIONS = 30  # ★本番時は 30〜50 に設定
-    CONDITIONS = ["A_Baseline", "B_Proposed"] # 条件A(通常), 条件B(二重過程)
+    N_SIMULATIONS = 30  
+    CONDITIONS = ["A_Baseline", "B_Proposed"] 
     MAX_DAYS = 5
     TURNS_PER_DAY = 6
 
@@ -30,10 +30,10 @@ class GameConfig:
     SELLER_TARGET_P = 1800
     SELLER_LIMIT_P = 600
 
-    MODEL_NAME = "gemma4:31b" # 使用するOllamaモデル
+    MODEL_NAME = "gemma4:31b" 
 
 # =====================================================================
-# 2. 堅牢なJSONパーサー（インラインコメント対応）
+# 2. JSONパーサー（インラインコメント対応）
 # =====================================================================
 def parse_robust_json(text):
     try:
