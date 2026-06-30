@@ -11,7 +11,7 @@ import numpy as np
 # 1. 実験設定（Config）クラス
 # =====================================================================
 class GameConfig:
-    N_SIMULATIONS = 1  # ★本番実験時は 30〜50 に設定してください
+    N_SIMULATIONS = 50  # 本番実験時は 30〜50 に設定
     CONDITIONS = ["A_Baseline", "B_Proposed"]
     MAX_DAYS = 5
     TURNS_PER_DAY = 6
