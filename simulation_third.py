@@ -11,7 +11,7 @@ import numpy as np
 # 1. 実験設定（Config）クラス
 # =====================================================================
 class GameConfig:
-    N_SIMULATIONS = 1
+    N_SIMULATIONS = 200
     CONDITIONS = [
         "A_Baseline",
         "B_Ablation_Sys1",
