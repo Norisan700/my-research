@@ -11,7 +11,7 @@ import numpy as np
 # 1. 実験設定（Config）クラス
 # =====================================================================
 class GameConfig:
-    N_SIMULATIONS = 3  # 学術水準として30〜50以上の独立試行を推奨
+    N_SIMULATIONS = 1  # 学術水準として30〜50以上の独立試行を推奨
     CONDITIONS = [
         "A_Baseline",
         "B_Ablation_Sys1",
@@ -39,7 +39,7 @@ class GameConfig:
     SELLER_G_TAR = 200
     SELLER_G_RES = 400
 
-    MODEL_NAME = "gemma4:31b"  # 2026年現在の実用的な高性能OSSモデルを指定
+    MODEL_NAME = "gemma4:31b"  
 
 # =====================================================================
 # 2. 効用関数 (Utility) とナッシュ交渉解 (NBS) の数理定義
@@ -198,95 +198,90 @@ def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, p
         menu_text += f"ID {idx}: {strategy_names[idx]} -> 【相手に『食料 {off['G']}g / 総額 {off['M']}円 (単価 {off['P']}円/g)』を提案】\n"
     if last_opp_offer_raw:
         menu_text += f"ID 6: 生存最優先の受け入れ -> 【相手の最新提案『食料 {last_opp_offer_raw['G']}g / 総額 {last_opp_offer_raw['M']}円』を丸呑みして今すぐ【合意】する】\n"
+    else:
+        menu_text += f"ID 6: 受け入れ -> (選択不可)\n"
 
-    # ==========================================
+    # =================================================================
+    # 【プロンプトの定義】関数の最初で1回だけ定義し、下部の条件分岐で使い回す
+    # =================================================================
+    
+    # System 1: 感情的プロンプト
+    prompt_sys1 = (
+        f"あなたはサバイバル交渉中の{agent.role}の『生存本能と感情（システム1）』です。\n"
+        f"現在の状況: Day {day} / {GameConfig.MAX_DAYS}, 交渉ターン {turn} / {max_turn}\n"
+        f"自分のステータス: 所持金 {agent.money}円, 食料在庫 {agent.food}g\n"
+        f"目標単価: {tar_p}円/g, 限界単価: {lim_p}円/g\n"
+        f"【指示】提示された{n_items}個の戦略選択肢（ID 1〜{n_items}）それぞれに対し、生存への恐怖、焦り、怒りなどの感情的・本能的な直感から、主観的な評価値を [-1.0（最悪）から 1.0（最高）] の範囲で算出して、リストとして出力してください。\n"
+        f"【選択可能な行動】\n{menu_text}\n"
+        f"出力は、以下のJSON形式のみとし、余計な説明やマークダウンは一切含めないでください：\n"
+        f'{{"scores": [s1, s2, s3, s4, s5{", s6" if n_items == 6 else ""}]}}\n'
+    )
+
+    # System 2: 理性的プロンプト
+    prompt_sys2 = (
+        f"あなたはサバイバル交渉中の{agent.role}の『理性と論理（システム2）』です。\n"
+        f"現在の状況: Day {day} / {GameConfig.MAX_DAYS}, 交渉ターン {turn} / {max_turn}\n"
+        f"自分のステータス: 所持金 {agent.money}円, 食料在庫 {agent.food}g\n"
+        f"目標単価: {tar_p}円/g, 限界単価: {lim_p}円/g\n"
+        f"本日のこれまでの交渉履歴:\n{history_text}\n\n"
+        f"【指示】提示された{n_items}個の戦略選択肢（ID 1〜{n_items}）それぞれに対し、長期的な利益最大化や相手の分析の観点から、論理的な評価値を [-1.0（最悪）から 1.0（最高）] の範囲で算出して、リストとして出力してください。\n"
+        f"【選択可能な行動】\n{menu_text}\n"
+        f"出力は、以下のJSON形式のみとし、余計な説明やマークダウンは一切含めないでください：\n"
+        f'{{"scores": [s1, s2, s3, s4, s5{", s6" if n_items == 6 else ""}]}}\n'
+    )
+
+    # =================================================================
+    # 【条件分岐による意思決定】
+    # =================================================================
+    
     # ① A_Baseline: 理性（System 2）のみの確定的選択
-    # ==========================================
     if condition == "A_Baseline":
-        prompt_sys2 = (
-            f"あなたはサバイバル交渉中の{agent.role}の『理性と論理（システム2）』です。\n"
-            f"現在の状況: Day {day} / {GameConfig.MAX_DAYS}, 交渉ターン {turn} / {max_turn}\n"
-            f"自分のステータス: 所持金 {agent.money}円, 食料在庫 {agent.food}g\n"
-            f"目標単価: {tar_p}円/g, 限界単価: {lim_p}円/g\n"
-            f"本日のこれまでの交渉履歴:\n{history_text}\n\n"
-            f"【指示】提示された{n_items}個の戦略選択肢（ID 1〜{n_items}）それぞれに対し、数理的有効性と論理的合理性の観点から、主観的な評価値を [-1.0（最悪）から 1.0（最高）] の範囲で算出して、リストとして出力してください。\n"
-            f"【選択可能な行動】\n{menu_text}\n"
-            f"出力は、以下のJSON形式のみとし、余計な説明やマークダウンは一切含めないでください：\n"
-            f'{{"scores": [s1, s2, s3, s4, s5{", s6" if n_items == 6 else ""}]}}\n'
-        )
         scores_sys2 = get_system_scores(prompt_sys2, temp=0.1, n_items=n_items)
-        
-        # 従来手法は「完全に確定的（Argmax）」として振る舞う（内的エントロピー = 0.0）
         selected_idx = int(np.argmax(scores_sys2))
         selected_id = selected_idx + 1
-        
-        print(f" > Baseline 理性選択: ID {selected_id} (スコア: {scores_sys2})")
+        print(f" > [Baseline] 理性選択: ID {selected_id} (スコア: {scores_sys2})")
         return selected_id, 0.0, 1.0, 0.0
 
-    # ==========================================
-    # ② B_Ablation_Sys1: 感情（System 1）のみの確率的選択
-    # ==========================================
+    # ② B_Ablation_Sys1: 感情（System 1）のみの確率的選択（QRE）
     elif condition == "B_Ablation_Sys1":
-        prompt_sys1 = (
-            f"あなたはサバイバル交渉中の{agent.role}の『生存本能と感情（システム1）』です。\n"
-            # ...プロンプトの中身はそのまま
-        )
         scores_sys1 = get_system_scores(prompt_sys1, temp=0.9, n_items=n_items)
-        
-        # QRE（w1=1.0, w2=0.0）
         V = np.array(scores_sys1)
         lam = 2.0
         exp_V = np.exp(np.clip(lam * V, -20.0, 20.0))
         probs = exp_V / np.sum(exp_V)
         selected_id = int(np.random.choice(range(1, n_items + 1), p=probs))
-        
-        print(f" > [Ablation_Sys1] 感情のみ選択: ID {selected_id}")
+        print(f" > [Ablation_Sys1] 感情のみ選択: ID {selected_id} (スコア: {scores_sys1})")
         return selected_id, 1.0, 0.0, 0.0
 
-    # ==========================================
-    # ③ C_Ablation_Static: 感情50%・理性50%の固定調停
-    # ==========================================
+    # ③ C_Ablation_Static: 感情50%・理性50%の固定調停（調停機能の欠如）
     elif condition == "C_Ablation_Static":
-        # 両システムからスコアを取得
-        # (前述の prompt_sys1, prompt_sys2 を流用)
         scores_sys1 = get_system_scores(prompt_sys1, temp=0.9, n_items=n_items)
         scores_sys2 = get_system_scores(prompt_sys2, temp=0.1, n_items=n_items)
-        
-        # 重みを 0.5 固定にする（調停役の不在）
         w1, w2 = 0.5, 0.5
         V = w1 * np.array(scores_sys1) + w2 * np.array(scores_sys2)
         lam = 2.0
         exp_V = np.exp(np.clip(lam * V, -20.0, 20.0))
         probs = exp_V / np.sum(exp_V)
         selected_id = int(np.random.choice(range(1, n_items + 1), p=probs))
-        
-        weight_entropy = - (w1 * math.log(w1) + w2 * math.log(w2)) # 常に 0.6931
-        print(f" > [Ablation_Static] 固定50:50選択: ID {selected_id}")
+        weight_entropy = - (w1 * math.log(w1) + w2 * math.log(w2))  # 常に 0.69315
+        print(f" > [Ablation_Static] 固定50:50選択: ID {selected_id} (entropy={weight_entropy:.4f})")
         return selected_id, w1, w2, weight_entropy
 
-    # ==========================================
-    # ④ D_Proposed: 提案手法（シグモイド調停あり）
-    # ==========================================
+    # ④ D_Proposed: 提案手法（シグモイド調停ありの完全体）
     else:
-        # 両システムからスコアを取得
-        # (前述の prompt_sys1, prompt_sys2 を流用)
         scores_sys1 = get_system_scores(prompt_sys1, temp=0.9, n_items=n_items)
         scores_sys2 = get_system_scores(prompt_sys2, temp=0.1, n_items=n_items)
-        
-        # 生理的状況（餓死リスク）から動的に重みを決定
         w1, w2 = calc_moderator_weights(agent.food, agent.role)
         V = w1 * np.array(scores_sys1) + w2 * np.array(scores_sys2)
         lam = 2.0
         exp_V = np.exp(np.clip(lam * V, -20.0, 20.0))
         probs = exp_V / np.sum(exp_V)
         selected_id = int(np.random.choice(range(1, n_items + 1), p=probs))
-        
         if w1 <= 0.0 or w2 <= 0.0:
             weight_entropy = 0.0
         else:
             weight_entropy = - (w1 * math.log(w1) + w2 * math.log(w2))
-            
-        print(f" > [Proposed] 動的調停選択: ID {selected_id} (w1={w1:.2f}, w2={w2:.2f})")
+        print(f" > [Proposed] 動的調停選択: ID {selected_id} (w1={w1:.2f}, w2={w2:.2f}, entropy={weight_entropy:.4f})")
         return selected_id, w1, w2, weight_entropy
 
 # =====================================================================
@@ -409,41 +404,40 @@ def run_experiment():
 # =====================================================================
 # 9. 自動データ集計・U検定モジュール
 # =====================================================================
-def analyze_data_v3(csv_filename):
+def analyze_data_v4(csv_filename):
     df = pd.read_csv(csv_filename)
-    print("\n" + "="*50 + "\n📊 統計解析レポート (IEEEレベル対応)\n" + "="*50)
+    print("\n" + "="*50 + "\n📊 統計解析レポート (アブレーション・多重比較対応)\n" + "="*50)
 
-    # ① 生存日数のU検定
+    # ① 生存日数の全体検定 (Kruskal-Wallis Test)
     surv_df = df.groupby(['condition', 'sim_id'])['day'].max().reset_index()
-    a_surv = surv_df[surv_df['condition'] == 'A_Baseline']['day']
-    b_surv = surv_df[surv_df['condition'] == 'B_Proposed']['day']
-    _, p_surv = stats.mannwhitneyu(a_surv, b_surv, alternative='two-sided')
-    print(f"生存日数 (Days Survived):")
-    print(f"  Baseline: {a_surv.mean():.2f}日 | Proposed: {b_surv.mean():.2f}日 (p = {p_surv:.5f})")
-
-    # ② 合意率のU検定
-    total_days = df.groupby(['condition', 'sim_id'])['day'].nunique().reset_index()
-    accept_days = df[df['action'] == 'accept'].groupby(['condition', 'sim_id'])['day'].nunique().reset_index()
-    ag_df = pd.merge(total_days, accept_days, on=['condition', 'sim_id'], how='left').fillna(0)
-    ag_df['rate'] = ag_df['day_y'] / ag_df['day_x']
-    a_rate = ag_df[ag_df['condition'] == 'A_Baseline']['rate']
-    b_rate = ag_df[ag_df['condition'] == 'B_Proposed']['rate']
-    _, p_rate = stats.mannwhitneyu(a_rate, b_rate, alternative='two-sided')
-    print(f"合意率 (Agreement Rate):")
-    print(f"  Baseline: {a_rate.mean()*100:.1f}% | Proposed: {b_rate.mean()*100:.1f}% (p = {p_rate:.5f})")
-
-    # ③ 葛藤度エントロピーの集計
-    b_entropy = df[(df['condition'] == 'B_Proposed') & (df['action'] == 'propose')]['conflict_score']
-    print(f"提案手法の平均内的葛藤度 (Shannon Entropy): {b_entropy.mean():.4f} (理論的最大値: 0.6931)")
-
-    # ④ NBS（ナッシュ交渉解）距離のU検定
-    a_nbs = df[(df['condition'] == 'A_Baseline') & (df['action'] == 'accept')]['nbs_distance'].dropna()
-    b_nbs = df[(df['condition'] == 'B_Proposed') & (df['action'] == 'accept')]['nbs_distance'].dropna()
-    _, p_nbs = stats.mannwhitneyu(a_nbs, b_nbs, alternative='two-sided')
-    print(f"NBSからの乖離度 (Distance to NBS - 小さいほど良い):")
-    print(f"  Baseline: {a_nbs.mean():.4f} | Proposed: {b_nbs.mean():.4f} (p = {p_nbs:.5f})")
+    
+    groups = {}
+    for cond in GameConfig.CONDITIONS:
+        groups[cond] = surv_df[surv_df['condition'] == cond]['day']
+        print(f"  {cond} 平均生存日数: {groups[cond].mean():.2f}日")
+    
+    # クラスカル・ウォリス検定の実行
+    stat_k, p_k = stats.kruskal(*groups.values())
+    print(f"\n生存日数の全体検定 (Kruskal-Wallis test):")
+    print(f"  H-statistic = {stat_k:.4f}, p-value = {p_k:.5f}")
+    
+    if p_k < 0.05:
+        print("  -> 群間に有意な差が認められます。Bonferroni補正付きU検定（多重比較）を実行します。\n")
+        
+        # 4条件における全ペア（6パターン）の組み合わせ
+        conds = GameConfig.CONDITIONS
+        comparisons = []
+        for i in range(len(conds)):
+            for j in range(i+1, len(conds)):
+                comparisons.append((conds[i], conds[j]))
+        
+        print("【生存日数のペア対比 (Bonferroni補正付き)】")
+        for c1, c2 in comparisons:
+            _, p_raw = stats.mannwhitneyu(groups[c1], groups[c2], alternative='two-sided')
+            # 6回の比較があるため、p値に6を掛けて補正（最大1.0）
+            p_adj = min(1.0, p_raw * len(comparisons))
+            sig = "★有意差あり" if p_adj < 0.05 else "有意差なし (ns)"
+            print(f"  {c1} vs {c2}: p_raw = {p_raw:.5f} -> 補正後 p_adj = {p_adj:.5f} ({sig})")
+    else:
+        print("  -> 群間に有意な差は認められませんでした。\n")
     print("="*50)
-
-if __name__ == "__main__":
-    filename = run_experiment()
-    analyze_data_v3(filename)
