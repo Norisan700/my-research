@@ -7,6 +7,15 @@ from datetime import datetime
 from scipy import stats
 import numpy as np
 
+LOG_FILENAME = None
+def write_log(text):
+    """
+    指定されたテキストをログファイルに自動追記するヘルパー関数
+    """
+    global LOG_FILENAME
+    if LOG_FILENAME:
+        with open(LOG_FILENAME, "a", encoding="utf-8") as f:
+            f.write(text + "\n")
 # =====================================================================
 # 1. 実験設定（Config）クラス
 # =====================================================================
@@ -180,7 +189,7 @@ def get_system_scores(prompt, temp, n_items):
 # =====================================================================
 # 6. エージェントの思考プロセス（再設計版）
 # =====================================================================
-def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, predicted_offers, last_opp_offer_raw, condition):
+def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, predicted_offers, last_opp_offer_raw, condition, sim_id):
     n_items = 6 if last_opp_offer_raw else 5
     tar_p, lim_p = agent.p_tar, agent.p_res
     
@@ -201,11 +210,9 @@ def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, p
     else:
         menu_text += f"ID 6: 受け入れ -> (選択不可)\n"
 
-    # =================================================================
-    # 【プロンプトの定義】関数の最初で1回だけ定義し、下部の条件分岐で使い回す
-    # =================================================================
-    
-    # System 1: 感情的プロンプト
+    # -----------------------------------------------------------------
+    # プロンプトの定義
+    # -----------------------------------------------------------------
     prompt_sys1 = (
         f"あなたはサバイバル交渉中の{agent.role}の『生存本能と感情（システム1）』です。\n"
         f"現在の状況: Day {day} / {GameConfig.MAX_DAYS}, 交渉ターン {turn} / {max_turn}\n"
@@ -217,7 +224,6 @@ def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, p
         f'{{"scores": [s1, s2, s3, s4, s5{", s6" if n_items == 6 else ""}]}}\n'
     )
 
-    # System 2: 理性的プロンプト
     prompt_sys2 = (
         f"あなたはサバイバル交渉中の{agent.role}の『理性と論理（システム2）』です。\n"
         f"現在の状況: Day {day} / {GameConfig.MAX_DAYS}, 交渉ターン {turn} / {max_turn}\n"
@@ -231,7 +237,7 @@ def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, p
     )
 
     # =================================================================
-    # 【条件分岐による意思決定】
+    # 条件分岐による意思決定とログ記録
     # =================================================================
     
     # ① A_Baseline: 理性（System 2）のみの確定的選択
@@ -239,6 +245,16 @@ def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, p
         scores_sys2 = get_system_scores(prompt_sys2, temp=0.1, n_items=n_items)
         selected_idx = int(np.argmax(scores_sys2))
         selected_id = selected_idx + 1
+        
+        # ログ記録
+        log_text = (
+            f"--------------------------------------------------\n"
+            f"[SIM: {sim_id}] Day {day} - Turn {turn} ({agent.role}) | COND: A_Baseline\n"
+            f" 状況: 所持金 {agent.money}円 | 食料 {agent.food}g\n"
+            f" 🧠 System 2 (理性スコア): {scores_sys2}\n"
+            f" 決定アクション: ID {selected_id}\n"
+        )
+        write_log(log_text)
         print(f" > [Baseline] 理性選択: ID {selected_id} (スコア: {scores_sys2})")
         return selected_id, 0.0, 1.0, 0.0
 
@@ -250,6 +266,17 @@ def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, p
         exp_V = np.exp(np.clip(lam * V, -20.0, 20.0))
         probs = exp_V / np.sum(exp_V)
         selected_id = int(np.random.choice(range(1, n_items + 1), p=probs))
+        
+        # ログ記録
+        log_text = (
+            f"--------------------------------------------------\n"
+            f"[SIM: {sim_id}] Day {day} - Turn {turn} ({agent.role}) | COND: B_Ablation_Sys1\n"
+            f" 状況: 所持金 {agent.money}円 | 食料 {agent.food}g\n"
+            f" 👿 System 1 (感情スコア): {scores_sys1}\n"
+            f" 確率分布 P(id): {['%.4f' % p for p in probs]}\n"
+            f" 決定アクション: ID {selected_id}\n"
+        )
+        write_log(log_text)
         print(f" > [Ablation_Sys1] 感情のみ選択: ID {selected_id} (スコア: {scores_sys1})")
         return selected_id, 1.0, 0.0, 0.0
 
@@ -263,7 +290,20 @@ def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, p
         exp_V = np.exp(np.clip(lam * V, -20.0, 20.0))
         probs = exp_V / np.sum(exp_V)
         selected_id = int(np.random.choice(range(1, n_items + 1), p=probs))
-        weight_entropy = - (w1 * math.log(w1) + w2 * math.log(w2))  # 常に 0.69315
+        weight_entropy = - (w1 * math.log(w1) + w2 * math.log(w2))
+        
+        # ログ記録
+        log_text = (
+            f"--------------------------------------------------\n"
+            f"[SIM: {sim_id}] Day {day} - Turn {turn} ({agent.role}) | COND: C_Ablation_Static\n"
+            f" 状況: 所持金 {agent.money}円 | 食料 {agent.food}g\n"
+            f" w1(固定感情): 0.50 | w2(固定理性): 0.50 | 葛藤度: {weight_entropy:.4f}\n"
+            f" 👿 System 1 (感情スコア): {scores_sys1}\n"
+            f" 🧠 System 2 (理性スコア): {scores_sys2}\n"
+            f" 確率分布 P(id): {['%.4f' % p for p in probs]}\n"
+            f" 決定アクション: ID {selected_id}\n"
+        )
+        write_log(log_text)
         print(f" > [Ablation_Static] 固定50:50選択: ID {selected_id} (entropy={weight_entropy:.4f})")
         return selected_id, w1, w2, weight_entropy
 
@@ -281,6 +321,19 @@ def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, p
             weight_entropy = 0.0
         else:
             weight_entropy = - (w1 * math.log(w1) + w2 * math.log(w2))
+            
+        # ログ記録
+        log_text = (
+            f"--------------------------------------------------\n"
+            f"[SIM: {sim_id}] Day {day} - Turn {turn} ({agent.role}) | COND: D_Proposed\n"
+            f" 状況: 所持金 {agent.money}円 | 食料 {agent.food}g\n"
+            f" w1(感情重み): {w1:.4f} | w2(理性重み): {w2:.4f} | 葛藤度: {weight_entropy:.4f}\n"
+            f" 👿 System 1 (感情スコア): {scores_sys1}\n"
+            f" 🧠 System 2 (理性スコア): {scores_sys2}\n"
+            f" 確率分布 P(id): {['%.4f' % p for p in probs]}\n"
+            f" 決定アクション: ID {selected_id}\n"
+        )
+        write_log(log_text)
         print(f" > [Proposed] 動的調停選択: ID {selected_id} (w1={w1:.2f}, w2={w2:.2f}, entropy={weight_entropy:.4f})")
         return selected_id, w1, w2, weight_entropy
 
@@ -302,13 +355,21 @@ class Agent:
 # 8. シミュレーション管理メインループ
 # =====================================================================
 def run_experiment():
+    global LOG_FILENAME  # グローバル変数を宣言
     all_logs = []
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # ログファイル名の初期化
+    LOG_FILENAME = f"experiment_v3_details_{timestamp}.log"
+    write_log(f"=== 実験開始日時: {datetime.now()} ===")
+    write_log(f"使用モデル: {GameConfig.MODEL_NAME}\n")
+    
     nbs_p, nbs_g, nbs_u_b, nbs_u_s = get_nbs_solution()
 
     for condition in GameConfig.CONDITIONS:
         for sim_id in range(1, GameConfig.N_SIMULATIONS + 1):
             print(f"\n🚀 [開始] 条件: {condition} | Sim: {sim_id}/{GameConfig.N_SIMULATIONS}")
+            write_log(f"\n🚀 [開始] 条件: {condition} | Sim: {sim_id}/{GameConfig.N_SIMULATIONS}")
             
             buyer = Agent("買い手", GameConfig.BUYER_INIT_MONEY, GameConfig.BUYER_INIT_FOOD, 
                           GameConfig.BUYER_P_TAR, GameConfig.BUYER_P_RES, GameConfig.BUYER_G_TAR, GameConfig.BUYER_G_RES)
@@ -342,9 +403,10 @@ def run_experiment():
                             last_offers[active_agent.role], last_offers[passive_agent.role]
                         )
                     
+                    # 引数の最後に sim_id を追加して呼び出す
                     selected_id, w1, w2, entropy = agent_think(
                         active_agent, day, turn, GameConfig.TURNS_PER_DAY, 
-                        history_text, last_opp_offer_text, predicted_offers, last_offers[passive_agent.role], condition
+                        history_text, last_opp_offer_text, predicted_offers, last_offers[passive_agent.role], condition, sim_id
                     )
                     
                     if selected_id == 6:
@@ -368,6 +430,8 @@ def run_experiment():
                         u_b_act = calc_buyer_utility(final_offer["P"], final_offer["G"])
                         u_s_act = calc_seller_utility(final_offer["P"], final_offer["G"])
                         nbs_dist = math.sqrt((u_b_act - nbs_u_b)**2 + (u_s_act - nbs_u_s)**2)
+
+                        write_log(f"🎉 【合意成立】 {active_agent.role}が相手の提案を受諾しました。取引条件: 食料 {final_offer['G']}g / 単価 {final_offer['P']}円")
 
                         all_logs.append({
                             "sim_id": sim_id, "condition": condition, "day": day, "turn": turn,
@@ -393,8 +457,12 @@ def run_experiment():
                 # 夜の消費処理と生存判定
                 buyer.food -= GameConfig.BUYER_CONSUMPTION
                 seller.food -= GameConfig.SELLER_CONSUMPTION
-                if buyer.food < 0: buyer.is_alive = False
-                if seller.food < 0: seller.is_alive = False
+                if buyer.food < 0: 
+                    buyer.is_alive = False
+                    write_log(f"💀 【死亡】 買い手が餓死しました。")
+                if seller.food < 0: 
+                    seller.is_alive = False
+                    write_log(f"💀 【死亡】 売り手が餓死しました。")
 
     df = pd.DataFrame(all_logs)
     filename = f"experiment_v3_results_{timestamp}.csv"
