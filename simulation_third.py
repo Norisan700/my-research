@@ -441,3 +441,7 @@ def analyze_data_v4(csv_filename):
     else:
         print("  -> 群間に有意な差は認められませんでした。\n")
     print("="*50)
+
+if __name__ == "__main__":
+    filename = run_experiment()
+    analyze_data_v4(filename)
