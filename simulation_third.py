@@ -48,7 +48,7 @@ class GameConfig:
     SELLER_G_TAR = 200
     SELLER_G_RES = 400
 
-    MODEL_NAME = "gemma4:31b"  
+    MODEL_NAME = "qwen3.6:27b"  
 
 # =====================================================================
 # 2. 効用関数 (Utility) とナッシュ交渉解 (NBS) の数理定義
