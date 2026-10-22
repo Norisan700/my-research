@@ -19,16 +19,15 @@ def write_log(text):
 # 1. 実験設定（Config）クラス
 # =====================================================================
 class GameConfig:
-    N_SIMULATIONS = 30  # 16通り × 30試行
+    N_SIMULATIONS = 15  # 16通り × 15試行 = 計240試合
     MODELS = [
         "A_Baseline",
         "B_Ablation_Sys1",
         "C_Ablation_Static",
         "D_Proposed"
     ]
-    # 全16通りのマッチアップ (Buyer, Seller)
-    MATCHUPS = []
-    
+    MATCHUPS = []  # 下部で生成
+
     MAX_DAYS = 5
     TURNS_PER_DAY = 6
 
@@ -52,6 +51,8 @@ class GameConfig:
     SELLER_G_RES = 400
 
     MODEL_NAME = "gemma4:31b"
+
+# クラス定義直後に16通りの対戦ペアを生成（Pythonスコープ対策）
 GameConfig.MATCHUPS = [(b, s) for b in GameConfig.MODELS for s in GameConfig.MODELS]
 
 # =====================================================================
@@ -181,12 +182,23 @@ def get_system_scores(prompt, temp, n_items):
     return [0.0] * n_items
 
 # =====================================================================
-# 6. エージェントの思考プロセス
+# 6. エージェントの思考プロセス（完全情報・フェア設計版）
 # =====================================================================
 def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, predicted_offers, last_opp_offer_raw, condition, sim_id):
     n_items = 6 if last_opp_offer_raw else 5
     tar_p, lim_p = agent.p_tar, agent.p_res
     
+    # 客観的ルールの整理（査読対策：情報欠落の完全排除）
+    consumption = GameConfig.BUYER_CONSUMPTION if agent.role == "買い手" else GameConfig.SELLER_CONSUMPTION
+    if agent.role == "買い手":
+        role_desc = "買い手（食料を購入し現金を支払う）"
+        urgency = "本日終了時に所持食料が消費量を下回ると【即座に餓死】します。食料の購入が生存に必須です。"
+        time_hint = "奇数ターンがあなたの提案機会です。ターン5はあなたにとって本日最後の提案ターンです。"
+    else:
+        role_desc = "売り手（食料を売却し現金を受け取る）"
+        urgency = f"あなたも毎晩 {consumption}g の食料を自己消費します。食料を売りすぎると自分自身が餓死します。"
+        time_hint = "偶数ターンがあなたの提案機会です。ターン6は本日の最終デッドラインです。"
+
     strategy_names = {
         1: "堅実な歩み寄り（少しずつ歩み寄る）",
         2: "戦略的ハッタリ（前回の提案をキープ）",
@@ -204,37 +216,45 @@ def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, p
     else:
         menu_text += f"ID 6: 受け入れ -> (選択不可)\n"
 
+    # 全システム共通の客観的ファクト（事実）
+    common_context = (
+        f"あなたはサバイバル交渉における【{role_desc}】です。\n"
+        f"現在の状況: Day {day} / {GameConfig.MAX_DAYS}, 交渉ターン {turn} / {max_turn}\n"
+        f"自分のステータス: 所持金 {agent.money}円, 現在の食料在庫 {agent.food}g\n"
+        f"【絶対的生存ルール】今晩消費される食料: {consumption}g。{urgency}\n"
+        f"【時間制約】{time_hint}\n"
+        f"目標単価: {tar_p}円/g, 限界単価: {lim_p}円/g\n"
+        f"本日の交渉履歴:\n{history_text}\n"
+    )
+
+    # System 1: 感情的プロンプト
     prompt_sys1 = (
-        f"あなたはサバイバル交渉中の{agent.role}の『生存本能と感情（システム1）』です。\n"
-        f"現在の状況: Day {day} / {GameConfig.MAX_DAYS}, 交渉ターン {turn} / {max_turn}\n"
-        f"自分のステータス: 所持金 {agent.money}円, 食料在庫 {agent.food}g\n"
-        f"目標単価: {tar_p}円/g, 限界単価: {lim_p}円/g\n"
-        f"【指示】提示された{n_items}個の戦略選択肢（ID 1〜{n_items}）それぞれに対し、生存への恐怖、焦り、怒りなどの感情的・本能的な直感から、主観的な評価値を [-1.0（最悪）から 1.0（最高）] の範囲で算出して、リストとして出力してください。\n"
+        f"{common_context}\n"
+        f"あなたは上記状況に直面したエージェントの【生存本能と感情（システム1）】です。\n"
+        f"【指示】上記の客観的ルールと死の脅威に直面した際の、直感的な焦燥感、餓死への恐怖、相手への怒りなどの感情に基づき、提示された{n_items}個の戦略選択肢（ID 1〜{n_items}）それぞれに対する主観的評価値を [-1.0（最悪）から 1.0（最高）] の範囲で算出してリストとして出力してください。\n"
         f"【選択可能な行動】\n{menu_text}\n"
-        f"出力は、以下のJSON形式のみとし、余計な説明やマークダウンは一切含めないでください：\n"
+        f"出力は以下のJSON形式のみとし、解説や思考プロセスは一切含めないでください：\n"
         f'{{"scores": [s1, s2, s3, s4, s5{", s6" if n_items == 6 else ""}]}}\n'
     )
 
+    # System 2: 理性的プロンプト
     prompt_sys2 = (
-        f"あなたはサバイバル交渉中の{agent.role}の『理性と論理（システム2）』です。\n"
-        f"現在の状況: Day {day} / {GameConfig.MAX_DAYS}, 交渉ターン {turn} / {max_turn}\n"
-        f"自分のステータス: 所持金 {agent.money}円, 食料在庫 {agent.food}g\n"
-        f"目標単価: {tar_p}円/g, 限界単価: {lim_p}円/g\n"
-        f"本日のこれまでの交渉履歴:\n{history_text}\n\n"
-        f"【指示】提示された{n_items}個の戦略選択肢（ID 1〜{n_items}）それぞれに対し、長期的な利益最大化や相手の分析の観点から、論理的な評価値を [-1.0（最悪）から 1.0（最高）] の範囲で算出して、リストとして出力してください。\n"
+        f"{common_context}\n"
+        f"あなたは上記状況を冷静に分析するエージェントの【理性と論理（システム2）】です。\n"
+        f"【指示】上記の客観的ルール、餓死回避の最低条件、および目標単価・限界単価を踏まえ、長期的な利益最大化と生存確率の観点から論理的・数理的に分析してください。その上で、提示された{n_items}個の戦略選択肢（ID 1〜{n_items}）それぞれに対する合理的な評価値を [-1.0（最悪）から 1.0（最高）] の範囲で算出してリストとして出力してください。\n"
         f"【選択可能な行動】\n{menu_text}\n"
-        f"出力は、以下のJSON形式のみとし、余計な説明やマークダウンは一切含めないでください：\n"
+        f"出力は以下のJSON形式のみとし、解説や思考プロセスは一切含めないでください：\n"
         f'{{"scores": [s1, s2, s3, s4, s5{", s6" if n_items == 6 else ""}]}}\n'
     )
 
-    # ① A_Baseline: 理性のみ
+    # ① A_Baseline: 理性（System 2）のみの確定的選択
     if condition == "A_Baseline":
         scores_sys2 = get_system_scores(prompt_sys2, temp=0.1, n_items=n_items)
         selected_idx = int(np.argmax(scores_sys2))
         selected_id = selected_idx + 1
         return selected_id, 0.0, 1.0, 0.0
 
-    # ② B_Ablation_Sys1: 感情のみ
+    # ② B_Ablation_Sys1: 感情（System 1）のみの確率的選択（QRE）
     elif condition == "B_Ablation_Sys1":
         scores_sys1 = get_system_scores(prompt_sys1, temp=0.9, n_items=n_items)
         V = np.array(scores_sys1)
@@ -244,7 +264,7 @@ def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, p
         selected_id = int(np.random.choice(range(1, n_items + 1), p=probs))
         return selected_id, 1.0, 0.0, 0.0
 
-    # ③ C_Ablation_Static: 固定50:50
+    # ③ C_Ablation_Static: 感情50%・理性50%の固定調停
     elif condition == "C_Ablation_Static":
         scores_sys1 = get_system_scores(prompt_sys1, temp=0.9, n_items=n_items)
         scores_sys2 = get_system_scores(prompt_sys2, temp=0.1, n_items=n_items)
@@ -257,7 +277,7 @@ def agent_think(agent, day, turn, max_turn, history_text, last_opp_offer_text, p
         weight_entropy = - (w1 * math.log(w1) + w2 * math.log(w2))
         return selected_id, w1, w2, weight_entropy
 
-    # ④ D_Proposed: 提案手法（動的調停）
+    # ④ D_Proposed: 提案手法（シグモイド動的調停）
     else:
         scores_sys1 = get_system_scores(prompt_sys1, temp=0.9, n_items=n_items)
         scores_sys2 = get_system_scores(prompt_sys2, temp=0.1, n_items=n_items)
@@ -298,7 +318,7 @@ def run_tournament():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     LOG_FILENAME = f"tournament_details_{timestamp}.log"
-    write_log(f"=== トーナメント実験開始: {datetime.now()} ===")
+    write_log(f"=== フェア条件トーナメント実験開始: {datetime.now()} ===")
     write_log(f"使用モデル: {GameConfig.MODEL_NAME}\n")
     
     nbs_p, nbs_g, nbs_u_b, nbs_u_s = get_nbs_solution()
@@ -309,7 +329,7 @@ def run_tournament():
     for buyer_cond, seller_cond in GameConfig.MATCHUPS:
         matchup_idx += 1
         matchup_name = f"{buyer_cond}_vs_{seller_cond}"
-        print(f"\n⚔️ [対戦開始 {matchup_idx}/{total_matchups}] 買い手: {buyer_cond} vs 売り手: {seller_cond}")
+        print(f"\n⚔️ [対戦 {matchup_idx}/{total_matchups}] 買い手: {buyer_cond} vs 売り手: {seller_cond}")
         
         for sim_id in range(1, GameConfig.N_SIMULATIONS + 1):
             buyer = Agent("買い手", GameConfig.BUYER_INIT_MONEY, GameConfig.BUYER_INIT_FOOD, 
@@ -320,7 +340,6 @@ def run_tournament():
             for day in range(1, GameConfig.MAX_DAYS + 1):
                 if not buyer.is_alive or not seller.is_alive: break
                 
-                # 生存日数のインクリメント
                 if buyer.is_alive: buyer.days_survived = day
                 if seller.is_alive: seller.days_survived = day
                 
@@ -341,7 +360,6 @@ def run_tournament():
                     active_agent = buyer if turn % 2 == 1 else seller
                     passive_agent = seller if turn % 2 == 1 else buyer
                     
-                    # 各手番エージェントのアーキテクチャ条件を選択
                     current_cond = buyer_cond if active_agent.role == "買い手" else seller_cond
                     
                     predicted_offers = {}
@@ -360,7 +378,6 @@ def run_tournament():
                     if selected_id == 6:
                         final_offer = last_offers[passive_agent.role]
                         
-                        # ガードレール
                         if active_agent.role == "買い手" and final_offer["M"] > buyer.money: break
                         elif active_agent.role == "売り手" and final_offer["G"] > seller.food: break
                         elif active_agent.role == "買い手" and final_offer["G"] > (seller.food - GameConfig.SELLER_CONSUMPTION): break
@@ -405,7 +422,6 @@ def run_tournament():
                 if buyer.food < 0: buyer.is_alive = False
                 if seller.food < 0: seller.is_alive = False
 
-            # シミュレーション終了時のまとめ記録
             match_summary.append({
                 "matchup": matchup_name,
                 "buyer_cond": buyer_cond,
@@ -413,43 +429,40 @@ def run_tournament():
                 "sim_id": sim_id,
                 "buyer_survived": buyer.days_survived,
                 "seller_survived": seller.days_survived,
-                "social_survival": buyer.days_survived + seller.days_survived  # 社会的生存日数（最大10）
+                "social_survival": buyer.days_survived + seller.days_survived
             })
 
-    # データ保存
     df_logs = pd.DataFrame(all_logs)
     df_summary = pd.DataFrame(match_summary)
     
-    log_file = f"tournament_logs_{timestamp}.csv"
-    summary_file = f"tournament_summary_{timestamp}.csv"
+    log_file = f"tournament_logs_fair_{timestamp}.csv"
+    summary_file = f"tournament_summary_fair_{timestamp}.csv"
     
     df_logs.to_csv(log_file, index=False, encoding='utf-8-sig')
     df_summary.to_csv(summary_file, index=False, encoding='utf-8-sig')
     
-    print(f"\n🎉 トーナメント全対戦が終了しました！\n詳細ログ: {log_file}\n対戦要約: {summary_file}")
+    print(f"\n🎉 フェア条件トーナメントが完了しました！\n詳細ログ: {log_file}\n対戦要約: {summary_file}")
     return summary_file
 
 # =====================================================================
-# 9. トーナメント結果集計モジュール（ペイオフ・マトリクス生成）
+# 9. 結果集計モジュール
 # =====================================================================
 def analyze_tournament(summary_file):
     df = pd.read_csv(summary_file)
-    print("\n" + "="*60 + "\n🏆 トーナメント総当たり対戦結果（社会的生存日数マトリクス）\n" + "="*60)
+    print("\n" + "="*60 + "\n🏆 フェア条件トーナメント結果（社会的生存日数マトリクス）\n" + "="*60)
     
-    # 買い手 × 売り手の社会的生存日数（平均値）のクロス集計表
-    matrix = df.pivot_table(index='buyer_cond', columns='seller_cond', values='social_survival', aggfunc='mean')
+    order = GameConfig.MODELS
+    matrix = df.pivot_table(index='buyer_cond', columns='seller_cond', values='social_survival', aggfunc='mean').reindex(index=order, columns=order)
     print("\n【社会的生存日数（ペア合計：最大10日）の平均値マトリクス】")
     print(matrix.round(2))
     
-    print("\n【各アーキテクチャの総合適応力（全対戦を通じた平均社会的生存日数）】")
-    # 買い手として参加した時と、売り手として参加した時の総合平均
+    print("\n【各アーキテクチャの総合適応力（平均社会的生存日数）】")
     buyer_scores = df.groupby('buyer_cond')['social_survival'].mean()
     seller_scores = df.groupby('seller_cond')['social_survival'].mean()
-    total_scores = (buyer_scores + seller_scores) / 2
+    total_scores = ((buyer_scores + seller_scores) / 2).reindex(order)
     
     for model in GameConfig.MODELS:
         print(f"  {model}: 平均 {total_scores[model]:.2f} 日 / 10日")
-        
     print("="*60)
 
 if __name__ == "__main__":

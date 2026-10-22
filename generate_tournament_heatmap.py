@@ -8,7 +8,7 @@ plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['font.size'] = 11
 
 # 生成された要約CSVを読み込み
-summary_file = "tournament_summary_20261014_152906.csv"
+summary_file = "tournament_summary_fair_20261020_215325.csv"
 df = pd.read_csv(summary_file)
 
 # 16マスのピボットテーブル作成
